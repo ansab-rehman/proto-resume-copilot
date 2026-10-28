@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     llm_response_format: Literal["json_object", "json_schema"] = "json_object"
     llm_timeout_s: float = 180.0
     llm_max_tokens: int = 8192
+    # Process-wide cap on in-flight LLM calls (providers rate-limit bursts of uploads).
+    llm_max_concurrency: int = 2
 
     max_upload_mb: float = 5
     database_url: str = "sqlite:///./copilot.db"

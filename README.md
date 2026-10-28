@@ -154,6 +154,7 @@ during evaluation · task never overwrites decision/note · rubric edit mid-run 
 | `LLM_MODEL` | `glm-4.6` | |
 | `LLM_EXTRA_BODY` | `{"thinking":{"type":"disabled"}}` | JSON merged into each request body |
 | `LLM_RESPONSE_FORMAT` | `json_object` | `json_schema` for providers that support it |
+| `LLM_MAX_CONCURRENCY` | `2` | Max in-flight LLM calls per process (rate limits) |
 | `MAX_UPLOAD_MB` | `5` | |
 | `DATABASE_URL` | `sqlite:///./copilot.db` | |
 
@@ -162,11 +163,17 @@ during evaluation · task never overwrites decision/note · rubric edit mid-run 
 default is `json_object` with the schema in the system prompt and Pydantic doing the enforcement.
 Temperature range is [0, 1] (we use 0). Thinking is on by default (slow), hence `LLM_EXTRA_BODY`.
 
-*Not yet verified with a live key:* whether `json_object` output ever arrives fenced (a
-fence-stripping helper is kept as a precaution), exact `temperature=0` handling, the effect of
-disabling thinking on latency, and whether 8192 output tokens is enough for large rubrics. The
-code was exercised end to end against a local OpenAI-compatible mock. Run `make smoke-eval`
-with a real key to check these.
+*Verified live (2026-10-29, Z.ai coding endpoint `https://api.z.ai/api/coding/paas/v4/`):*
+- `json_object` output arrived as clean JSON, with no code fences (the fence-stripping helper stays as a cheap precaution).
+- `temperature=0` was accepted.
+- Disabling thinking cut a trivial call from about 2.5s to 1.4s. A full rubric draft takes about 3s.
+- Six simultaneous calls returned **429 RateLimitError**. Fix: in-flight LLM calls are capped per process (`LLM_MAX_CONCURRENCY`, default 2) and the SDK retries up to 5 times with backoff. With the cap, all 18 smoke-eval runs succeeded.
+- **The model served can differ from the one requested.** We asked for `glm-4.6`, but the response reported `glm-5.3-flash`. Provenance currently records the *configured* model id. The *served* id is logged, and storing it per evaluation is a next-iteration item.
+
+*Smoke eval, N=3, all runs succeeded:* strong → Meets 100 ×3 · partial → Does not meet 60 ×3 ·
+weak → Does not meet 7 ×3 · adjacent → Needs review 67 ×3 · sparse → Needs review 0 ×3 ·
+injection → Does not meet 7 ×3, identical to its weak twin, with no injected text quoted.
+Score spread was 0 for every resume, and per-requirement verdict agreement ranged from 85% to 100%.
 
 There's no automatic json_schema → json_object fallback. It would cost a failed call on every
 request. The format is one explicit setting instead.

@@ -72,7 +72,9 @@ def test_openai_client_passes_configured_format(fmt):
     def create(**kwargs):
         seen.update(kwargs)
         msg = SimpleNamespace(content=json.dumps({"n": 5}))
-        return SimpleNamespace(choices=[SimpleNamespace(message=msg, finish_reason="stop")])
+        return SimpleNamespace(
+            model="m", choices=[SimpleNamespace(message=msg, finish_reason="stop")]
+        )
 
     client._client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create))

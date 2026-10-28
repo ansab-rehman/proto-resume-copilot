@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import threading
 import time
 from collections.abc import Callable
 from typing import Protocol, TypeVar
@@ -14,6 +15,17 @@ from .config import Settings, get_settings
 
 log = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
+
+_slots: threading.BoundedSemaphore | None = None
+_slots_lock = threading.Lock()
+
+
+def _call_slots(n: int) -> threading.BoundedSemaphore:
+    global _slots
+    with _slots_lock:
+        if _slots is None:
+            _slots = threading.BoundedSemaphore(max(1, n))
+        return _slots
 
 
 class LLMError(Exception):
@@ -42,7 +54,7 @@ class OpenAICompatClient:
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
             timeout=settings.llm_timeout_s,
-            max_retries=2,
+            max_retries=5,  # SDK backs off on 429/5xx
         )
 
     def _response_format(self, schema: type[BaseModel]) -> dict:
@@ -56,21 +68,23 @@ class OpenAICompatClient:
     def complete(self, messages: list[dict], schema: type[BaseModel]) -> str:
         start = time.monotonic()
         try:
-            resp = self._client.chat.completions.create(
-                model=self.model_id,
-                messages=messages,
-                temperature=0,
-                max_tokens=self.settings.llm_max_tokens,
-                response_format=self._response_format(schema),
-                extra_body=self.settings.llm_extra_body or None,
-            )
+            with _call_slots(self.settings.llm_max_concurrency):
+                resp = self._client.chat.completions.create(
+                    model=self.model_id,
+                    messages=messages,
+                    temperature=0,
+                    max_tokens=self.settings.llm_max_tokens,
+                    response_format=self._response_format(schema),
+                    extra_body=self.settings.llm_extra_body or None,
+                )
         except openai.APIError as e:
             log.warning("llm call failed model=%s error=%s", self.model_id, type(e).__name__)
             raise LLMError(f"LLM request failed ({type(e).__name__}). Retry.") from e
         choice = resp.choices[0]
         log.info(
-            "llm call model=%s latency_ms=%d finish=%s",
+            "llm call model=%s served=%s latency_ms=%d finish=%s",
             self.model_id,
+            resp.model,
             (time.monotonic() - start) * 1000,
             choice.finish_reason,
         )

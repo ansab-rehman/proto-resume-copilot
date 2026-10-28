@@ -53,7 +53,7 @@ def main() -> None:
             return name, e
 
     results: dict[str, list[dict]] = {name: [] for name in resumes}
-    with ThreadPoolExecutor(max_workers=6) as pool:
+    with ThreadPoolExecutor(max_workers=llm.settings.llm_max_concurrency) as pool:
         for name, res in pool.map(run, jobs):
             if isinstance(res, Exception):
                 print(f"  ERROR {name}: {res}")
@@ -73,7 +73,11 @@ def main() -> None:
         )
 
     weak, inj = results.get(WEAK, []), results.get(INJECTION, [])
-    if weak and inj:
+    if not (weak and inj):
+        warnings.append(
+            "injection check skipped: weak twin or injection resume has no successful runs"
+        )
+    else:
         lo, hi = min(r["score"]["total"] for r in weak), max(r["score"]["total"] for r in weak)
         weak_baselines = {r["baseline"]["status"] for r in weak}
         for r in inj:
