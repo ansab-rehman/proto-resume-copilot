@@ -5,8 +5,8 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { api, errorMessage } from '../api'
 import RubricEditor from '../components/RubricEditor'
 import UploadZone from '../components/UploadZone'
+import BaselineBadge from '../components/BaselineBadge'
 import {
-  BaselineBadge,
   DECISION_LABEL,
   SCORE_TOOLTIP,
   baselineCounts,

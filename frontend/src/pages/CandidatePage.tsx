@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, errorMessage } from '../api'
+import BaselineBadge from '../components/BaselineBadge'
 import {
-  BaselineBadge,
   DECISION_LABEL,
   SCORE_TOOLTIP,
   STATUS_ICON,
@@ -98,7 +98,7 @@ export default function CandidatePage() {
           </details>
         </div>
         <aside className="candidate-side">
-          <DecisionPanel c={c} onSaved={invalidate} />
+          <DecisionPanel key={c.id} c={c} onSaved={invalidate} />
           {c.model_id && (
             <div className="card provenance small muted">
               <div>Model: {c.model_id}</div>
@@ -236,7 +236,6 @@ function Quote({ text, found }: { text: string; found: boolean }) {
 
 function DecisionPanel({ c, onSaved }: { c: CandidateDetail; onSaved: () => void }) {
   const [note, setNote] = useState(c.note)
-  useEffect(() => setNote(c.note), [c.note])
 
   const save = useMutation({
     mutationFn: (patch: { decision?: Decision; note?: string }) => api.updateCandidate(c.id, patch),

@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -12,7 +13,9 @@ from .routes import router
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger(__name__)
 
-FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+FRONTEND_DIST = Path(
+    os.environ.get("FRONTEND_DIST") or Path(__file__).resolve().parents[2] / "frontend" / "dist"
+).resolve()
 
 
 @asynccontextmanager

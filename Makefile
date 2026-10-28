@@ -1,4 +1,4 @@
-PY := backend/.venv/bin/python
+PORT ?= 8000
 
 .PHONY: setup dev-backend dev-frontend test lint build samples smoke-eval docker
 
@@ -8,10 +8,10 @@ setup:
 	@test -f .env || cp .env.example .env
 
 dev-backend:
-	cd backend && .venv/bin/uvicorn app.main:app --reload --port 8000
+	cd backend && .venv/bin/uvicorn app.main:app --reload --port $(PORT)
 
 dev-frontend:
-	cd frontend && npm run dev
+	cd frontend && BACKEND_URL=http://localhost:$(PORT) npm run dev
 
 test:
 	cd backend && .venv/bin/pytest -q

@@ -33,14 +33,6 @@ export const DECISION_LABEL: Record<Decision, string> = {
   reject: 'Reject',
 }
 
-export function BaselineBadge({ status, large }: { status: BaselineStatus; large?: boolean }) {
-  return (
-    <span className={`badge badge-${status}${large ? ' badge-lg' : ''}`}>
-      {BASELINE_LABEL[status]}
-    </span>
-  )
-}
-
 export function baselineCounts(b: Baseline) {
   const parts = [`${b.met}/${b.total} must-haves met`]
   if (b.needs_review) parts.push(`${b.needs_review} needs review`)
