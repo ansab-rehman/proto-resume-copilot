@@ -16,24 +16,49 @@ any OpenAI-compatible LLM endpoint (default: Z.ai GLM).
 
 ## Quick start
 
+### Prerequisites
+
+| Path | Needs |
+|---|---|
+| Docker (recommended) | Docker with a running daemon, Compose **v2.24+** (`docker compose version`) |
+| Local dev | Python **3.11+**, Node **20.19+ or 22.12+** with npm (required by Vite 8), `make` |
+| Both | An API key for an OpenAI-compatible LLM endpoint (see below) |
+
+**LLM key.** The default is [Z.ai](https://z.ai) GLM. Put the key in `.env` as `LLM_API_KEY`.
+The key is never committed or sent to the browser.
+- **Z.ai pay-as-you-go key:** the defaults work as they are.
+- **Z.ai GLM Coding Plan key:** also set `LLM_BASE_URL=https://api.z.ai/api/coding/paas/v4/`
+  (this is the endpoint the app was verified on).
+- **Other OpenAI-compatible providers:** set `LLM_BASE_URL` and `LLM_MODEL`, and set
+  `LLM_EXTRA_BODY=` empty, because the default `thinking` flag is GLM-specific. The provider
+  must support `response_format: json_object`. This was not tested live.
+
+### Run with Docker
+
+The container serves the built UI and the API together.
+
 ```bash
 cp .env.example .env          # then set LLM_API_KEY
-make setup                    # backend venv + frontend deps
-make dev-backend              # http://localhost:8000  (PORT=8010 make dev-backend to change)
-make dev-frontend             # http://localhost:5173  (PORT=8010 make dev-frontend to match)
+docker compose up --build     # open http://localhost:8000
 ```
 
-Or as a single container serving the built UI and the API (needs a running Docker daemon and
-Docker Compose v2.24+, check with `docker compose version`):
+- Data persists in the `data` volume. `docker compose down -v` resets it.
+- If you see `Cannot connect to the Docker daemon`, start Docker Desktop, or run `colima start`
+  on Colima (`colima restart` if it already says it's running).
+- If port 8000 is already in use, run `PORT=8001 docker compose up --build`.
+
+### Run locally (dev mode, hot reload)
 
 ```bash
-cp .env.example .env          # then set LLM_API_KEY (without it the app runs but can't draft/evaluate)
-docker compose up --build     # http://localhost:8000
+make setup                    # backend venv + frontend deps; creates .env from the example if missing
+# set LLM_API_KEY in .env, then in two terminals:
+make dev-backend              # API on http://localhost:8000
+make dev-frontend             # open http://localhost:5173 (proxies /api to the backend)
 ```
 
-If you see `Cannot connect to the Docker daemon`, start Docker Desktop, or run `colima start`
-on Colima (`colima restart` if it already says it's running). Port 8000 already in use? Run
-`PORT=8001 docker compose up --build`.
+To use another backend port, pass the same port to both commands:
+`PORT=8010 make dev-backend` and `PORT=8010 make dev-frontend`. The SQLite file is
+`backend/copilot.db`.
 
 **Try it:** create a role by pasting [`samples/jd_senior_fullstack.md`](samples/jd_senior_fullstack.md),
 review the drafted rubric, then drag all six files from [`samples/resumes/`](samples/resumes/)
@@ -227,8 +252,17 @@ is quoted as evidence. **This is a consistency check, not an accuracy benchmark*
   removed code that wasn't earning its place (a configurable `json_schema` mode no provider here
   supports, unused types and exports, committed build output).
 
-## Assumptions
-English resumes; text-based PDFs (no OCR); one hiring manager; local use; synthetic data only.
+## Assumptions (how I read the ambiguous parts of the brief)
+- **"Baseline requirements defined in the JD"**: JDs are prose. The AI drafts must-haves from
+  them, and the HM approves and edits them before any evaluation, so the baseline is explicit.
+- **"Particularly noteworthy"**: strengths beyond the rubric (shown under Noteworthy) plus the
+  nice-to-haves, each with a quote.
+- **"Overall fit score"**: rubric coverage computed in code, explicitly *not* a prediction of
+  job success. It is secondary to the baseline because a high score shouldn't hide a missing must-have.
+- **"Job description in Markdown"**: pasted into the form, with a Write/Preview toggle.
+- **"PDF or Word"**: `.pdf` and `.docx`. Legacy binary `.doc` is rejected with a clear message ("Save as
+  .docx or PDF").
+- English resumes, text-based PDFs (no OCR), one hiring manager, local use, synthetic data only.
 
 ## Security & limitations
 - **No auth**, intended for local use only.
