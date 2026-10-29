@@ -12,18 +12,21 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <Link to="/" className="brand">
-          Resume Review Co-pilot
+          <img src="/favicon.svg" alt="" width={22} height={22} />
+          <span>
+            Resume Review <span className="brand-sub">Co-pilot</span>
+          </span>
         </Link>
-        <span className="topbar-note">AI-assisted. You make every decision.</span>
+        <span className="topbar-note">AI drafts the evidence. You make every decision.</span>
       </header>
       {health.data && !health.data.llm_configured && (
-        <div className="banner banner-warn">
+        <div className="banner banner-warn banner-global">
           <strong>LLM not configured.</strong> Set <code>LLM_API_KEY</code> in <code>.env</code> and
           restart the backend. You can browse existing data, but can't draft rubrics or evaluate.
         </div>
       )}
       {health.isError && (
-        <div className="banner banner-error">Can't reach the backend. Is it running?</div>
+        <div className="banner banner-error banner-global">Can't reach the backend. Is it running?</div>
       )}
       <main className="container">
         <Routes>

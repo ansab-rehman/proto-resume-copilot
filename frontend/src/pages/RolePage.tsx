@@ -6,6 +6,7 @@ import { api, errorMessage } from '../api'
 import RubricEditor from '../components/RubricEditor'
 import UploadZone from '../components/UploadZone'
 import BaselineBadge from '../components/BaselineBadge'
+import { ScoreRing } from '../components/ScoreDonut'
 import {
   DECISION_LABEL,
   SCORE_TOOLTIP,
@@ -62,9 +63,19 @@ export default function RolePage() {
 
   return (
     <>
-      <Link to="/" className="back">← Roles</Link>
+      <nav className="crumbs">
+        <Link to="/">Roles</Link>
+        <span>/</span>
+        <span>{r.title}</span>
+      </nav>
       <div className="page-head">
-        <h1>{r.title}</h1>
+        <div>
+          <p className="eyebrow">Role</p>
+          <h1>{r.title}</h1>
+          <p className="meta mono">
+            {r.rubric.requirements.length} requirements · {candidates.data?.length ?? 0} candidates
+          </p>
+        </div>
         <div className="row">
           <button className="btn btn-ghost btn-sm" onClick={() => setShowJd((v) => !v)}>
             {showJd ? 'Hide JD' : 'View JD'}
@@ -96,6 +107,22 @@ export default function RolePage() {
       <section className="card">
         <div className="section-head">
           <h2>Candidates</h2>
+          {(candidates.data?.length ?? 0) > 0 && (
+            <div className="toolbar">
+              <label>
+                Sort{' '}
+                <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+                  <option value="score">Rubric match</option>
+                  <option value="baseline">Baseline status</option>
+                  <option value="uploaded">Upload order</option>
+                </select>
+              </label>
+              <label className="check">
+                <input type="checkbox" checked={meetsOnly} onChange={(e) => setMeetsOnly(e.target.checked)} />
+                Meets baseline only
+              </label>
+            </div>
+          )}
         </div>
         {!hasMust ? (
           <p className="muted">Save a rubric with at least one must-have to start uploading resumes.</p>
@@ -115,22 +142,6 @@ export default function RolePage() {
           </div>
         )}
 
-        {(candidates.data?.length ?? 0) > 0 && (
-          <div className="toolbar">
-            <label>
-              Sort by{' '}
-              <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-                <option value="score">Rubric match score</option>
-                <option value="baseline">Baseline status</option>
-                <option value="uploaded">Upload order</option>
-              </select>
-            </label>
-            <label className="check">
-              <input type="checkbox" checked={meetsOnly} onChange={(e) => setMeetsOnly(e.target.checked)} />
-              Meets baseline only
-            </label>
-          </div>
-        )}
 
         {candidates.isError && <p className="error">{errorMessage(candidates.error)}</p>}
         {candidates.data?.length === 0 && hasMust && (
@@ -222,7 +233,7 @@ function CandidateRow({
         )}
       </td>
       <td className={failingBaseline ? 'score deemph' : 'score'}>
-        {c.score ? c.score.total : '—'}
+        {c.score ? <ScoreRing total={c.score.total} /> : <span className="muted">—</span>}
       </td>
       <td className="small">{c.top_highlight ?? <span className="muted">—</span>}</td>
       <td>

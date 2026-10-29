@@ -17,7 +17,11 @@ export default function RolesPage() {
   return (
     <>
       <div className="page-head">
-        <h1>Roles</h1>
+        <div>
+          <p className="eyebrow">Workspace</p>
+          <h1>Open roles</h1>
+          <p className="meta">Each role has its own rubric. Every resume is checked against it.</p>
+        </div>
         {!creating && (
           <button className="btn btn-primary" onClick={() => setCreating(true)}>
             New role
@@ -30,8 +34,8 @@ export default function RolesPage() {
       {roles.isPending && <p className="muted">Loading…</p>}
       {roles.isError && <p className="error">{errorMessage(roles.error)}</p>}
       {roles.data?.length === 0 && !creating && (
-        <div className="empty">
-          <p>No roles yet.</p>
+        <div className="card empty">
+          <p className="empty-title">No roles yet</p>
           <p className="muted">
             Create a role from a job description. You'll review the drafted rubric before any
             resume is evaluated.
@@ -39,13 +43,14 @@ export default function RolesPage() {
         </div>
       )}
 
-      <ul className="role-list">
+      <ul className={roles.data?.length ? 'card role-list' : 'role-list'}>
         {roles.data?.map((r) => (
-          <li key={r.id} className="card role-card">
+          <li key={r.id} className="role-card">
             <Link to={`/roles/${r.id}`} className="role-link">
               <span className="role-title">{r.title}</span>
-              <span className="muted">
-                {r.requirement_count} requirements · {r.candidate_count} candidates
+              <span className="meta mono">
+                {r.requirement_count} requirements · {r.candidate_count} candidates · created{' '}
+                {new Date(r.created_at).toLocaleDateString()}
               </span>
             </Link>
             <button

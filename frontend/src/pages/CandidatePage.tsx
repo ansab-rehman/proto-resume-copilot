@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, errorMessage } from '../api'
 import BaselineBadge from '../components/BaselineBadge'
+import ScoreDonut from '../components/ScoreDonut'
 import {
+  DECISION_HINT,
   DECISION_LABEL,
   SCORE_TOOLTIP,
   STATUS_ICON,
@@ -44,11 +46,16 @@ export default function CandidatePage() {
 
   return (
     <>
-      <Link to={`/roles/${c.role_id}`} className="back">← {c.role_title}</Link>
+      <nav className="crumbs">
+        <Link to="/">Roles</Link>
+        <span>/</span>
+        <Link to={`/roles/${c.role_id}`}>{c.role_title}</Link>
+      </nav>
       <div className="page-head">
         <div>
+          <p className="eyebrow">Candidate</p>
           <h1>{ev?.candidate_name ?? c.candidate_name ?? c.filename}</h1>
-          <p className="muted small">{c.filename}</p>
+          <p className="meta mono">{c.filename}</p>
         </div>
         <div className="row">
           <button
@@ -67,10 +74,10 @@ export default function CandidatePage() {
         </div>
       </div>
 
-      <div className="banner banner-info">
-        <strong>AI-assisted summary. Verify before deciding.</strong> The AI doesn't recommend
-        hiring or rejecting. Check the quoted evidence against the resume.
-      </div>
+      <p className="ai-note">
+        <strong>AI-assisted summary.</strong> It never recommends hiring or rejecting. Check the
+        quoted evidence against the resume before you decide.
+      </p>
 
       {reevaluate.isError && <p className="error">{errorMessage(reevaluate.error)}</p>}
 
@@ -99,13 +106,6 @@ export default function CandidatePage() {
         </div>
         <aside className="candidate-side">
           <DecisionPanel key={c.id} c={c} onSaved={invalidate} />
-          {c.model_id && (
-            <div className="card provenance small muted">
-              <div>Model: {c.model_id}</div>
-              <div>Prompt version: {c.prompt_version}</div>
-              <div>Rubric version: v{c.rubric_version} (current v{c.role_rubric_version})</div>
-            </div>
-          )}
         </aside>
       </div>
     </>
@@ -122,6 +122,7 @@ function EvaluationView({ ev }: { ev: Evaluation }) {
     <>
       <section className="card overview">
         <div className="overview-baseline">
+          <h3>Baseline</h3>
           <BaselineBadge status={ev.baseline.status} large />
           <p className="muted small">{baselineCounts(ev.baseline)}</p>
           <ul className="checklist">
@@ -135,29 +136,12 @@ function EvaluationView({ ev }: { ev: Evaluation }) {
           </ul>
         </div>
         <div className={`overview-score${failing ? ' deemph' : ''}`}>
-          <div className="score-label" title={SCORE_TOOLTIP}>
-            Rubric match score <span className="info">ⓘ</span>
-          </div>
-          <div className="score-number">{s.total}</div>
-          <p className="muted small">{SCORE_TOOLTIP}</p>
-          <table className="breakdown small">
-            <tbody>
-              <tr>
-                <td>Must-haves</td>
-                <td>{Math.round(s.must_coverage * 100)}% × {s.weights.must}</td>
-                <td>{Math.round(s.must_coverage * s.weights.must)}</td>
-              </tr>
-              <tr>
-                <td>Nice-to-haves</td>
-                <td>
-                  {s.nice_coverage === null ? 'none in rubric' : `${Math.round(s.nice_coverage * 100)}% × ${s.weights.nice}`}
-                </td>
-                <td>{s.nice_coverage === null ? '—' : Math.round(s.nice_coverage * s.weights.nice)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p className="muted small">Met = 1, partial = ½, not found or unclear = 0.</p>
-          {failing && <p className="small">Baseline not met. Score shown for reference only.</p>}
+          <h3 className="score-label" title={SCORE_TOOLTIP}>Rubric match</h3>
+          <ScoreDonut score={s} />
+          <p className="muted small">
+            {SCORE_TOOLTIP} Met counts 1, partial ½, not found or unclear 0.
+          </p>
+          {failing && <p className="small warn">Baseline not met. Score shown for reference only.</p>}
         </div>
       </section>
 
@@ -236,24 +220,46 @@ function Quote({ text, found }: { text: string; found: boolean }) {
 
 function DecisionPanel({ c, onSaved }: { c: CandidateDetail; onSaved: () => void }) {
   const [note, setNote] = useState(c.note)
+  const [flash, setFlash] = useState<string | null>(null)
+  const dirty = note !== c.note
 
   const save = useMutation({
     mutationFn: (patch: { decision?: Decision; note?: string }) => api.updateCandidate(c.id, patch),
-    onSuccess: onSaved,
+    onSuccess: (_, patch) => {
+      onSaved()
+      setFlash(patch.note !== undefined ? 'Note saved' : 'Decision saved')
+    },
   })
 
+  useEffect(() => {
+    if (!flash) return
+    const t = setTimeout(() => setFlash(null), 2500)
+    return () => clearTimeout(t)
+  }, [flash])
+
   return (
-    <div className="card decision-panel">
+    <section className="card decision-panel">
       <h2>Your decision</h2>
-      <div className="segmented">
+      <p className="muted small">
+        Record where this candidate stands. Only you set this, never the AI. It shows in the
+        role's candidate list so your team can see progress.
+      </p>
+      <div className="decision-options" role="radiogroup" aria-label="Decision">
         {(Object.keys(DECISION_LABEL) as Decision[]).map((d) => (
           <button
             key={d}
-            className={c.decision === d ? `seg active decision-${d}` : 'seg'}
-            onClick={() => save.mutate({ decision: d })}
+            type="button"
+            role="radio"
+            aria-checked={c.decision === d}
+            className={`decision-option opt-${d}${c.decision === d ? ' selected' : ''}`}
+            onClick={() => c.decision !== d && save.mutate({ decision: d })}
             disabled={save.isPending}
           >
-            {DECISION_LABEL[d]}
+            <span className="radio-dot" aria-hidden />
+            <span>
+              <span className="opt-label">{DECISION_LABEL[d]}</span>
+              <span className="opt-hint">{DECISION_HINT[d]}</span>
+            </span>
           </button>
         ))}
       </div>
@@ -263,12 +269,32 @@ function DecisionPanel({ c, onSaved }: { c: CandidateDetail; onSaved: () => void
           rows={4}
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          onBlur={() => note !== c.note && save.mutate({ note })}
-          placeholder="Why advance, hold or reject?"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && dirty) save.mutate({ note })
+          }}
+          placeholder="e.g. Strong on React, ask about AWS depth in the interview."
         />
       </label>
-      {save.isError && <p className="error small">{errorMessage(save.error)}</p>}
-      {save.isSuccess && !save.isPending && <p className="muted small">Saved</p>}
-    </div>
+      <div className="decision-foot">
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={!dirty || save.isPending}
+          onClick={() => save.mutate({ note })}
+        >
+          Save note
+        </button>
+        <span className="small" aria-live="polite">
+          {save.isError ? (
+            <span className="error">{errorMessage(save.error)}</span>
+          ) : save.isPending ? (
+            <span className="muted">Saving…</span>
+          ) : flash ? (
+            <span className="ok">✓ {flash}</span>
+          ) : dirty ? (
+            <span className="warn">Unsaved changes</span>
+          ) : null}
+        </span>
+      </div>
+    </section>
   )
 }

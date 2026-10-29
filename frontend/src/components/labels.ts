@@ -27,10 +27,17 @@ export const STATUS_ICON: Record<ReqStatus, string> = {
 }
 
 export const DECISION_LABEL: Record<Decision, string> = {
-  new: 'New',
+  new: 'Not reviewed',
   advance: 'Advance',
-  hold: 'Hold',
+  hold: 'On hold',
   reject: 'Reject',
+}
+
+export const DECISION_HINT: Record<Decision, string> = {
+  new: "You haven't made a call yet",
+  advance: 'Move to the next interview stage',
+  hold: 'Promising, revisit later',
+  reject: 'Not moving forward for this role',
 }
 
 export function baselineCounts(b: Baseline) {

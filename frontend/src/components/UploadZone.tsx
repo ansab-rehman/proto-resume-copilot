@@ -50,7 +50,7 @@ export default function UploadZone({ roleId, disabled }: { roleId: number; disab
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && !disabled && input.current?.click()}
       >
-        <strong>Drop resumes here</strong> or click to choose
+        <span><strong>Drop resumes here</strong> or click to choose</span>
         <span className="muted small">PDF or .docx · text-based (no scans) · up to 5 MB each</span>
         <input
           ref={input}
