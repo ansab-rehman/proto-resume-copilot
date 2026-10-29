@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
@@ -13,8 +15,6 @@ from .fakes import RESUME, RUBRIC, FakeLLMClient, eval_response
 
 def respond(messages):
     """Route by prompt: rubric extraction vs evaluation."""
-    import json
-
     if "<job_description>" in messages[1]["content"]:
         return json.dumps(RUBRIC)
     return json.dumps(eval_response())

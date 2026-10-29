@@ -6,6 +6,7 @@ import re
 import threading
 import time
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Protocol, TypeVar
 
 import openai
@@ -16,16 +17,11 @@ from .config import Settings, get_settings
 log = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
-_slots: threading.BoundedSemaphore | None = None
-_slots_lock = threading.Lock()
 
-
+@lru_cache
 def _call_slots(n: int) -> threading.BoundedSemaphore:
-    global _slots
-    with _slots_lock:
-        if _slots is None:
-            _slots = threading.BoundedSemaphore(max(1, n))
-        return _slots
+    """Process-wide cap on in-flight LLM calls."""
+    return threading.BoundedSemaphore(max(1, n))
 
 
 class LLMError(Exception):
@@ -43,7 +39,7 @@ class CheckError(ValueError):
 class LLMClient(Protocol):
     model_id: str
 
-    def complete(self, messages: list[dict], schema: type[BaseModel]) -> str: ...
+    def complete(self, messages: list[dict]) -> str: ...
 
 
 class OpenAICompatClient:
@@ -57,15 +53,7 @@ class OpenAICompatClient:
             max_retries=5,  # SDK backs off on 429/5xx
         )
 
-    def _response_format(self, schema: type[BaseModel]) -> dict:
-        if self.settings.llm_response_format == "json_schema":
-            return {
-                "type": "json_schema",
-                "json_schema": {"name": schema.__name__, "schema": schema.model_json_schema()},
-            }
-        return {"type": "json_object"}
-
-    def complete(self, messages: list[dict], schema: type[BaseModel]) -> str:
+    def complete(self, messages: list[dict]) -> str:
         start = time.monotonic()
         try:
             with _call_slots(self.settings.llm_max_concurrency):
@@ -74,7 +62,8 @@ class OpenAICompatClient:
                     messages=messages,
                     temperature=0,
                     max_tokens=self.settings.llm_max_tokens,
-                    response_format=self._response_format(schema),
+                    # The schema travels in the system prompt; Pydantic enforces it.
+                    response_format={"type": "json_object"},
                     extra_body=self.settings.llm_extra_body or None,
                 )
         except openai.APIError as e:
@@ -113,7 +102,7 @@ def structured(
     )
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     for attempt in (1, 2):
-        raw = llm.complete(messages, schema)
+        raw = llm.complete(messages)
         try:
             obj = schema.model_validate_json(strip_fences(raw))
             if check:

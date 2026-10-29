@@ -1,6 +1,6 @@
 PORT ?= 8000
 
-.PHONY: setup dev-backend dev-frontend test lint build samples smoke-eval docker
+.PHONY: setup dev-backend dev-frontend test lint samples smoke-eval docker
 
 setup:
 	cd backend && python3 -m venv .venv && .venv/bin/pip install -q -e '.[dev]'
@@ -18,10 +18,7 @@ test:
 
 lint:
 	cd backend && .venv/bin/ruff check . && .venv/bin/ruff format --check .
-	cd frontend && npm run build
-
-build:
-	cd frontend && npm run build
+	cd frontend && npm run lint && npm run build
 
 samples:
 	cd backend && .venv/bin/python scripts/make_samples.py

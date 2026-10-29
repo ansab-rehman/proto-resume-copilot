@@ -61,11 +61,8 @@ def test_strip_fences():
     assert strip_fences(' {"a":1} ') == '{"a":1}'
 
 
-@pytest.mark.parametrize("fmt", ["json_object", "json_schema"])
-def test_openai_client_passes_configured_format(fmt):
-    s = Settings(
-        llm_api_key="k", llm_response_format=fmt, llm_extra_body={"thinking": {"type": "disabled"}}
-    )
+def test_openai_client_request_params():
+    s = Settings(llm_api_key="k", llm_extra_body={"thinking": {"type": "disabled"}})
     client = OpenAICompatClient(s)
     seen = {}
 
@@ -80,11 +77,9 @@ def test_openai_client_passes_configured_format(fmt):
         chat=SimpleNamespace(completions=SimpleNamespace(create=create))
     )
     assert structured(client, "s", "u", Out).n == 5
-    assert seen["response_format"]["type"] == fmt
+    assert seen["response_format"] == {"type": "json_object"}
     assert seen["temperature"] == 0
     assert seen["extra_body"] == {"thinking": {"type": "disabled"}}
-    if fmt == "json_schema":
-        assert seen["response_format"]["json_schema"]["schema"]["properties"]["n"]
 
 
 def test_extra_body_parsed_from_env_string():

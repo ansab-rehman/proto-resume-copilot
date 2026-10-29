@@ -86,12 +86,9 @@ export interface CandidateDetail extends CandidateSummary {
   role_rubric_version: number
   evaluation: Evaluation | null
   resume_text: string
-  model_id: string | null
-  prompt_version: string | null
   rubric_version: number | null
 }
 
 export interface Health {
   llm_configured: boolean
-  model_id: string
 }

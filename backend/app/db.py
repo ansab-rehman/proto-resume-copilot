@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import JSON, Column, update
 from sqlalchemy.engine import Engine
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Field, Session, SQLModel, create_engine
 
 from .config import get_settings
 
@@ -77,6 +77,3 @@ def init_db() -> int:
         )
         s.commit()
         return result.rowcount
-
-
-__all__ = ["Role", "Candidate", "Session", "select", "get_session", "init_db"]

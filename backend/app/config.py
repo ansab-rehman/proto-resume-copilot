@@ -1,6 +1,5 @@
 import json
 from functools import lru_cache
-from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,7 +13,6 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = "glm-4.6"
     llm_extra_body: dict = {}
-    llm_response_format: Literal["json_object", "json_schema"] = "json_object"
     llm_timeout_s: float = 180.0
     llm_max_tokens: int = 8192
     # Process-wide cap on in-flight LLM calls (providers rate-limit bursts of uploads).

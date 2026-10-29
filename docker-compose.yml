@@ -2,11 +2,12 @@ services:
   app:
     build: .
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
     env_file:
       - path: .env
         required: false
     environment:
+      # Overrides the dev DATABASE_URL from .env so data lands in the volume.
       DATABASE_URL: sqlite:////data/copilot.db
     volumes:
       - data:/data

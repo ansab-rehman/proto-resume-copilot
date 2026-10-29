@@ -81,7 +81,7 @@ function NewRoleForm({ onCancel }: { onCancel: () => void }) {
     onSuccess: (role) => {
       qc.invalidateQueries({ queryKey: ['roles'] })
       qc.setQueryData(['role', role.id], role)
-      navigate(`/roles/${role.id}`, { state: { rubricError: role.rubric_error, fresh: true } })
+      navigate(`/roles/${role.id}`, { state: { rubricError: role.rubric_error } })
     },
   })
 

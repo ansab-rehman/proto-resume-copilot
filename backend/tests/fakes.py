@@ -10,7 +10,7 @@ class FakeLLMClient:
         self.responses = list(responses)
         self.calls: list[list[dict]] = []
 
-    def complete(self, messages, schema):
+    def complete(self, messages):
         self.calls.append([dict(m) for m in messages])
         r = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
         if callable(r):

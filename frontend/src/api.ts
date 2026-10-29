@@ -8,14 +8,6 @@ import type {
   RoleListItem,
 } from './types'
 
-export class ApiError extends Error {
-  status: number
-  constructor(status: number, message: string) {
-    super(message)
-    this.status = status
-  }
-}
-
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   const isJson = typeof init.body === 'string'
   const res = await fetch(`/api${path}`, {
@@ -32,7 +24,7 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(res.status, message)
+    throw new Error(message)
   }
   return (res.status === 204 ? undefined : await res.json()) as T
 }
