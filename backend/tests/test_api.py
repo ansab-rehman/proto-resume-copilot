@@ -2,10 +2,19 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app import db, routes
-from app.db import FAILED, PROCESSING, Candidate, Role, init_db, make_engine, set_engine
+from app.db import (
+    FAILED,
+    PROCESSING,
+    Candidate,
+    EvaluationCache,
+    Role,
+    init_db,
+    make_engine,
+    set_engine,
+)
 from app.llm import LLMError
 from app.main import app
 
@@ -36,6 +45,12 @@ def client(tmp_path, fake):
 
 def pdf():
     return ("cv.pdf", make_pdf(RESUME.splitlines()), "application/pdf")
+
+
+def upload(client, role_id):
+    r = client.post(f"/api/roles/{role_id}/candidates", files={"file": pdf()})
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
 
 
 def create_role(client):
@@ -185,6 +200,7 @@ def test_delete_during_evaluation_is_harmless(client):
     routes.run_evaluation(cid, FakeLLMClient(delete_then_answer))  # must not raise
     with Session(db.get_engine()) as s:
         assert s.get(Candidate, cid) is None
+        assert s.exec(select(EvaluationCache)).all() == []  # nothing cached for a deleted row
 
 
 def test_task_never_overwrites_human_fields(client):
@@ -219,3 +235,46 @@ def test_rubric_edit_mid_run_shows_stale(client):
 def test_health(client):
     body = client.get("/api/health").json()
     assert set(body) == {"llm_configured", "model_id"}
+
+
+def test_duplicate_upload_in_same_role_is_409(client):
+    role = create_role(client)
+    upload(client, role["id"])
+    r = client.post(f"/api/roles/{role['id']}/candidates", files={"file": pdf()})
+    assert r.status_code == 409
+    assert "Already uploaded to this role as Jane Doe" in r.json()["detail"]
+    upload(client, create_role(client)["id"])  # another role is fine
+
+
+def test_identical_input_reuses_cached_evaluation(client, fake):
+    role = create_role(client)
+    cid = upload(client, role["id"])
+    first = client.get(f"/api/candidates/{cid}").json()["evaluation"]
+
+    calls = len(fake.calls)
+    assert client.post(f"/api/candidates/{cid}/reevaluate").status_code == 202
+    assert len(fake.calls) == calls  # served from cache, model not asked
+    assert client.get(f"/api/candidates/{cid}").json()["evaluation"] == first
+
+    other = create_role(client)  # same drafted rubric
+    calls = len(fake.calls)
+    oid = upload(client, other["id"])
+    assert len(fake.calls) == calls
+    assert client.get(f"/api/candidates/{oid}").json()["evaluation"] == first
+
+    reqs = [dict(r, text=r["text"] + " (edited)") for r in RUBRIC["requirements"]]
+    client.put(f"/api/roles/{role['id']}/rubric", json={"requirements": reqs})
+    client.post(f"/api/candidates/{cid}/reevaluate")
+    assert len(fake.calls) == calls + 1  # changed rubric, fresh evaluation
+
+
+def test_delete_forgets_cached_evaluations(client, fake):
+    role = create_role(client)
+    client.delete(f"/api/candidates/{upload(client, role['id'])}")
+    calls = len(fake.calls)
+    upload(client, role["id"])
+    assert len(fake.calls) == calls + 1  # cache was purged with the candidate
+
+    client.delete(f"/api/roles/{role['id']}")
+    with Session(db.get_engine()) as s:
+        assert s.exec(select(EvaluationCache)).all() == []

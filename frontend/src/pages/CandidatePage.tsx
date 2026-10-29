@@ -59,13 +59,6 @@ export default function CandidatePage() {
         </div>
         <div className="row">
           <button
-            className="btn btn-sm"
-            disabled={c.status === 'processing' || reevaluate.isPending}
-            onClick={() => reevaluate.mutate()}
-          >
-            Re-evaluate
-          </button>
-          <button
             className="btn btn-ghost btn-sm"
             onClick={() => confirm('Delete this candidate?') && del.mutate()}
           >

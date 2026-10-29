@@ -4,6 +4,8 @@ The model proposes verdicts with quotes; everything that decides what the hiring
 (quote verification, baseline status, score) is deterministic code below.
 """
 
+import hashlib
+import json
 import re
 import unicodedata
 from typing import Literal
@@ -124,6 +126,17 @@ def extract_rubric(llm: LLMClient, jd_markdown: str) -> Rubric:
 
 
 # ---------- evaluation ----------
+
+
+def sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def cache_key(rubric: Rubric, resume_text: str, model_id: str) -> str:
+    """Fingerprint of everything that determines an evaluation."""
+    parts = [PROMPT_VERSION, model_id, rubric.model_dump(), sha256(resume_text)]
+    return sha256(json.dumps(parts, sort_keys=True))
+
 
 EVAL_SYSTEM = f"""\
 You help a hiring manager review a resume against their rubric. You do not make hiring decisions

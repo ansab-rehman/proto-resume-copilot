@@ -9,14 +9,16 @@ from sqlmodel import Session, select
 
 from . import db
 from .config import get_settings
-from .db import DONE, FAILED, PROCESSING, Candidate, Role, get_session
+from .db import DONE, FAILED, PROCESSING, Candidate, EvaluationCache, Role, get_session
 from .evaluation import (
     PROMPT_VERSION,
     Requirement,
     Rubric,
+    cache_key,
     evaluate,
     extract_rubric,
     finalize_rubric,
+    sha256,
 )
 from .llm import LLMClient, LLMError, get_llm
 from .parsing import ParseError, extract_text
@@ -67,6 +69,13 @@ def _is_stale(c: Candidate, role: Role) -> bool:
     return c.status == DONE and (c.rubric_version or 0) < role.rubric_version
 
 
+def _forget_resumes(s: Session, texts: set[str]) -> None:
+    """Drop cached evaluations of resumes no candidate references any more."""
+    for text in texts:
+        if not s.exec(select(Candidate.id).where(Candidate.resume_text == text)).first():
+            s.exec(delete(EvaluationCache).where(EvaluationCache.resume_sha == sha256(text)))
+
+
 def _candidate_summary(c: Candidate, role: Role) -> dict:
     ev = c.evaluation or {}
     highlights = ev.get("highlights") or []
@@ -91,7 +100,11 @@ def _candidate_summary(c: Candidate, role: Role) -> dict:
 
 
 def run_evaluation(candidate_id: int, llm: LLMClient) -> None:
-    """Background task. Writes only its own fields, and only while the row is still processing."""
+    """Background task. Writes only its own fields, and only while the row is still processing.
+
+    LLMs aren't deterministic even at temperature 0, so a finished evaluation is reused for the
+    exact same prompt, model, rubric and resume instead of asking the model again.
+    """
     start = time.monotonic()
     with Session(db.get_engine()) as s:
         c = s.get(Candidate, candidate_id)
@@ -101,9 +114,12 @@ def run_evaluation(candidate_id: int, llm: LLMClient) -> None:
         rubric = Rubric.model_validate(role.rubric)
         rubric_version = role.rubric_version  # captured now so mid-run edits show as stale
         resume_text = c.resume_text
+        key = cache_key(rubric, resume_text, llm.model_id)
+        cached = s.get(EvaluationCache, key)
+        cached = cached.evaluation if cached else None
 
     try:
-        result = evaluate(llm, rubric, resume_text)
+        result = cached or evaluate(llm, rubric, resume_text)
         values = dict(
             status=DONE,
             error=None,
@@ -124,11 +140,15 @@ def run_evaluation(candidate_id: int, llm: LLMClient) -> None:
             .where(Candidate.id == candidate_id, Candidate.status == PROCESSING)
             .values(**values)
         )
+        # Cache only results that were kept: a candidate deleted mid-run leaves nothing behind.
+        if res.rowcount and values["status"] == DONE and not cached:
+            s.merge(EvaluationCache(key=key, resume_sha=sha256(resume_text), evaluation=result))
         s.commit()
     log.info(
-        "evaluation candidate=%s status=%s written=%s latency_ms=%d",
+        "evaluation candidate=%s status=%s cached=%s written=%s latency_ms=%d",
         candidate_id,
         values["status"],
+        bool(cached),
         bool(res.rowcount),
         (time.monotonic() - start) * 1000,
     )
@@ -232,7 +252,9 @@ def update_rubric(role_id: int, body: RubricIn, s: Session = Depends(get_session
 @router.delete("/roles/{role_id}", status_code=204)
 def delete_role(role_id: int, s: Session = Depends(get_session)):
     role = _role_or_404(s, role_id)
+    texts = set(s.exec(select(Candidate.resume_text).where(Candidate.role_id == role_id)).all())
     s.exec(delete(Candidate).where(Candidate.role_id == role_id))
+    _forget_resumes(s, texts)
     s.delete(role)
     s.commit()
 
@@ -258,6 +280,12 @@ def upload_candidate(
         text = extract_text(filename, data, max_bytes)
     except ParseError as e:
         raise HTTPException(e.status_code, e.message) from e
+    dup = s.exec(
+        select(Candidate).where(Candidate.role_id == role_id, Candidate.resume_text == text)
+    ).first()
+    if dup:
+        name = (dup.evaluation or {}).get("candidate_name") or dup.filename
+        raise HTTPException(409, f"Already uploaded to this role as {name}.")
     c = Candidate(role_id=role_id, filename=filename, resume_text=text, status=PROCESSING)
     s.add(c)
     s.commit()
@@ -336,4 +364,6 @@ def reevaluate(
 def delete_candidate(candidate_id: int, s: Session = Depends(get_session)):
     c = _candidate_or_404(s, candidate_id)
     s.delete(c)
+    s.flush()
+    _forget_resumes(s, {c.resume_text})
     s.commit()

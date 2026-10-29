@@ -40,6 +40,15 @@ class Candidate(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
 
 
+class EvaluationCache(SQLModel, table=True):
+    """Finished evaluations keyed by their full input, so identical input gets identical output."""
+
+    key: str = Field(primary_key=True)
+    resume_sha: str = Field(index=True)  # lets deletes purge entries for forgotten resumes
+    evaluation: dict = Field(sa_column=Column(JSON, nullable=False))
+    created_at: datetime = Field(default_factory=_now)
+
+
 _engine: Engine | None = None
 
 

@@ -41,7 +41,7 @@ onto the upload area. All sample people are fictional (`make samples` regenerate
 
 | Command | What it does |
 |---|---|
-| `make test` | Backend test suite (62 tests, uses a fake LLM, no network) |
+| `make test` | Backend test suite (65 tests, uses a fake LLM, no network) |
 | `make lint` | ruff check + format check, oxlint, frontend type-check + build |
 | `make smoke-eval` | Runs the 6 samples × 3 against the configured model (see below) |
 
@@ -122,6 +122,21 @@ employer prestige, and employment gaps. The resume is wrapped in `<resume>` tags
 data, with any `</resume>` inside it escaped. Instructions inside it are ignored, and the model is
 asked to mention them in the summary. Interview questions target gaps and Needs-review items.
 
+**Same input, same result.** LLMs aren't deterministic even at temperature 0: the same resume
+uploaded twice once scored 64 and 56, because two borderline verdicts flipped (is Vue.js
+"partial" or "not met" for a React requirement?) while the quoted evidence was identical. So:
+- A resume whose text is already in a role is rejected with **409 "Already uploaded to this role
+  as …"** instead of being evaluated a second time.
+- Finished evaluations are cached by a fingerprint of prompt version, model, rubric and resume
+  text. Identical input reuses the stored result, including on Re-evaluate, so a result only
+  changes when one of its inputs does. That's why Re-evaluate is offered only when the rubric
+  changed or an evaluation failed.
+- Deleting a candidate or role also deletes cached evaluations of resumes nothing references
+  any more, so delete still means forget.
+
+The variance itself remains for genuinely borderline items; the next step is to evaluate three
+times and mark any requirement the runs disagree on as Needs review.
+
 **Provenance & staleness.** Each evaluation stores `model_id`, `PROMPT_VERSION` and the
 `rubric_version` captured when the task started. They're returned by the API for auditing but kept
 off the HM's screen, where they were noise. When the rubric changes, affected candidates
@@ -148,7 +163,9 @@ json mode, temperature 0 and extra body passed through) · every row of the base
 case · scoring incl. renormalization · quote normalization · completeness check (missing,
 duplicate, unknown ids) · prompt escaping · API flow (role → upload → evaluate → decision →
 stale → re-evaluate → cascade delete) · 409 on double re-evaluate · restart recovery · delete
-during evaluation · task never overwrites decision/note · rubric edit mid-run shows stale.
+during evaluation · task never overwrites decision/note · rubric edit mid-run shows stale ·
+duplicate upload → 409 · cache reuse (re-evaluate, identical rubric in another role) and
+invalidation on rubric edit · deletes purge the cache, including mid-run.
 
 ---
 
@@ -216,6 +233,8 @@ English resumes; text-based PDFs (no OCR); one hiring manager; local use; synthe
 ## Security & limitations
 - **No auth**, intended for local use only.
 - **Synthetic data only.** Resume text is sent to the configured third-party LLM provider.
+- The cache key includes the *configured* model id. If the provider silently changes the model it
+  serves, cached results aren't invalidated; bumping `PROMPT_VERSION` retires them.
 - API key lives only in `.env` / environment; never stored in the DB or sent to the browser.
 - No rate limiting. No PII in logs.
 - The LLM endpoint is fixed by the backend. **Allowing user-supplied endpoints would require an
@@ -232,4 +251,4 @@ English resumes; text-based PDFs (no OCR); one hiring manager; local use; synthe
 ## Next iteration
 BYOK settings (encrypted keys + SSRF allowlist) · auth & multi-tenant · durable job queue ·
 OCR for scanned resumes · PII redaction before the LLM call · labeled eval set with accuracy
-metrics · audit log of decisions · data retention policy · side-by-side candidate comparison.
+metrics · evaluate 3× and flag disagreements as Needs review · audit log of decisions · data retention policy · side-by-side candidate comparison.
