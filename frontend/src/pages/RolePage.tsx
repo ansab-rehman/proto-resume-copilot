@@ -12,10 +12,10 @@ import {
   SCORE_TOOLTIP,
   baselineCounts,
 } from '../components/labels'
-import type { CandidateSummary } from '../types'
+import type { CandidateSummary, Decision } from '../types'
 
-type Sort = 'score' | 'baseline' | 'uploaded'
-const BASELINE_RANK = { meets: 0, needs_review: 1, does_not_meet: 2 }
+type Sort = 'score' | 'uploaded'
+type BulkOp = { decision: Decision } | 'delete'
 
 export default function RolePage() {
   const roleId = Number(useParams().roleId)
@@ -26,6 +26,7 @@ export default function RolePage() {
   const [showJd, setShowJd] = useState(false)
   const [sort, setSort] = useState<Sort>('score')
   const [meetsOnly, setMeetsOnly] = useState(false)
+  const [selected, setSelected] = useState<Set<number>>(new Set())
 
   const role = useQuery({ queryKey: ['role', roleId], queryFn: () => api.getRole(roleId) })
   const candidates = useQuery({
@@ -41,6 +42,18 @@ export default function RolePage() {
   const delCandidate = useMutation({
     mutationFn: api.deleteCandidate,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['candidates', roleId] }),
+  })
+  // Bulk actions reuse the per-candidate endpoints; any failures are counted and reported.
+  const bulk = useMutation({
+    mutationFn: async ({ op, ids }: { op: BulkOp; ids: number[] }) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => (op === 'delete' ? api.deleteCandidate(id) : api.updateCandidate(id, op))),
+      )
+      const failed = results.filter((x) => x.status === 'rejected').length
+      if (failed) throw new Error(`${failed} of ${ids.length} candidates couldn't be updated.`)
+    },
+    onSuccess: () => setSelected(new Set()),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['candidates', roleId] }),
   })
   const delRole = useMutation({
     mutationFn: () => api.deleteRole(roleId),
@@ -60,6 +73,15 @@ export default function RolePage() {
     sort,
   )
   const stale = (candidates.data ?? []).filter((c) => c.stale)
+  // Only visible rows count, so filters and deletions never leave hidden selections behind.
+  const selectedIds = rows.filter((c) => selected.has(c.id)).map((c) => c.id)
+  const allSelected = rows.length > 0 && selectedIds.length === rows.length
+  const toggle = (id: number) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
 
   return (
     <>
@@ -113,7 +135,6 @@ export default function RolePage() {
                 Sort{' '}
                 <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
                   <option value="score">Rubric match</option>
-                  <option value="baseline">Baseline status</option>
                   <option value="uploaded">Upload order</option>
                 </select>
               </label>
@@ -142,6 +163,37 @@ export default function RolePage() {
           </div>
         )}
 
+        {selectedIds.length > 0 && (
+          <div className="bulk-bar">
+            <strong>{selectedIds.length} selected</strong>
+            <span className="muted small">Move to</span>
+            {(Object.keys(DECISION_LABEL) as Decision[]).map((d) => (
+              <button
+                key={d}
+                className="btn btn-sm"
+                disabled={bulk.isPending}
+                onClick={() => bulk.mutate({ op: { decision: d }, ids: selectedIds })}
+              >
+                {DECISION_LABEL[d]}
+              </button>
+            ))}
+            <span className="bulk-spacer" />
+            <button
+              className="btn btn-sm btn-danger"
+              disabled={bulk.isPending}
+              onClick={() =>
+                confirm(`Delete ${selectedIds.length} candidate${selectedIds.length > 1 ? 's' : ''}?`) &&
+                bulk.mutate({ op: 'delete', ids: selectedIds })
+              }
+            >
+              Delete
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set())}>
+              Clear
+            </button>
+          </div>
+        )}
+        {bulk.isError && <p className="error">{errorMessage(bulk.error)}</p>}
 
         {candidates.isError && <p className="error">{errorMessage(candidates.error)}</p>}
         {candidates.data?.length === 0 && hasMust && (
@@ -153,6 +205,17 @@ export default function RolePage() {
             <table className="candidates">
               <thead>
                 <tr>
+                  <th className="select-cell">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all candidates"
+                      checked={allSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = selectedIds.length > 0 && !allSelected
+                      }}
+                      onChange={() => setSelected(new Set(allSelected ? [] : rows.map((c) => c.id)))}
+                    />
+                  </th>
                   <th>Candidate</th>
                   <th>Baseline</th>
                   <th title={SCORE_TOOLTIP}>Rubric match ⓘ</th>
@@ -166,6 +229,8 @@ export default function RolePage() {
                   <CandidateRow
                     key={c.id}
                     c={c}
+                    selected={selected.has(c.id)}
+                    onToggle={() => toggle(c.id)}
                     onOpen={() => navigate(`/candidates/${c.id}`)}
                     onRetry={() => reevaluate.mutate(c.id)}
                     onDelete={() => confirm(`Delete ${c.candidate_name ?? c.filename}?`) && delCandidate.mutate(c.id)}
@@ -186,31 +251,35 @@ export default function RolePage() {
 
 function sortRows(rows: CandidateSummary[], sort: Sort) {
   if (sort === 'uploaded') return rows
-  return [...rows].sort((a, b) => {
-    if (sort === 'baseline') {
-      const d =
-        (a.baseline ? BASELINE_RANK[a.baseline.status] : 9) -
-        (b.baseline ? BASELINE_RANK[b.baseline.status] : 9)
-      if (d) return d
-    }
-    return (b.score?.total ?? -1) - (a.score?.total ?? -1)
-  })
+  return [...rows].sort((a, b) => (b.score?.total ?? -1) - (a.score?.total ?? -1))
 }
 
 function CandidateRow({
   c,
+  selected,
+  onToggle,
   onOpen,
   onRetry,
   onDelete,
 }: {
   c: CandidateSummary
+  selected: boolean
+  onToggle: () => void
   onOpen: () => void
   onRetry: () => void
   onDelete: () => void
 }) {
   const failingBaseline = c.baseline?.status === 'does_not_meet'
   return (
-    <tr className="clickable" onClick={onOpen}>
+    <tr className={selected ? 'clickable selected' : 'clickable'} onClick={onOpen}>
+      <td className="select-cell" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          aria-label={`Select ${c.candidate_name ?? c.filename}`}
+          checked={selected}
+          onChange={onToggle}
+        />
+      </td>
       <td>
         <div className="cand-name">{c.candidate_name ?? c.filename}</div>
         {c.candidate_name && <div className="muted small">{c.filename}</div>}

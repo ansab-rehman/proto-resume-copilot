@@ -72,7 +72,7 @@ frontend (Vite/React/TS) ──REST /api──> FastAPI ──> parsing (pypdf /
 2. **Review rubric**: edit, move between must/nice, add, remove. Server assigns ids `r1..rn` and requires ≥1 must-have (422 otherwise). Every save bumps `rubric_version`.
 3. **Upload**: one request per file (sent in parallel), so each file gets its own error. Upload returns immediately with `processing`. A `BackgroundTask` evaluates, and the UI polls while anything is processing.
 4. **Evaluate**: one LLM call returns a verdict + verbatim quote + one-line rationale per requirement, highlights, and interview questions. The backend then verifies quotes and computes baseline and score.
-5. **Decide**: the HM records Not reviewed / Advance / On hold / Reject plus a note. The decision shows in the candidates table. Evaluations never touch these fields.
+5. **Decide**: the HM records Not reviewed / Advance / On hold / Reject plus a note, or selects several rows in the candidates table to move or delete them in bulk. Evaluations never touch these fields.
 
 ---
 
